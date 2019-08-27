@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using static Bullseye.Targets;
 using static SimpleExec.Command;
@@ -6,11 +6,11 @@ using static Westwind.Utilities.FileUtils;
 
 namespace martenbuild
 {
-    class MartenBuild
+    internal class MartenBuild
     {
-        private const string BUILD_VERSION = "3.4.0";
+        private const string BUILD_VERSION = "3.7.0";
 
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
             var configuration = Environment.GetEnvironmentVariable("config");
             configuration = string.IsNullOrEmpty(configuration) ? "debug" : configuration;
@@ -34,8 +34,16 @@ namespace martenbuild
             Target("compile", DependsOn("clean"), () =>
                 Run("dotnet", $"build src/Marten.Testing/Marten.Testing.csproj --framework netcoreapp2.1 --configuration {configuration}"));
 
-            Target("test", DependsOn("compile"), () =>
+            Target("compile-noda-time", DependsOn("clean"), () =>
+                Run("dotnet", $"build src/Marten.NodaTime.Testing/Marten.NodaTime.Testing.csproj --framework netcoreapp2.1 --configuration {configuration}"));
+
+            Target("test-noda-time", DependsOn("compile-noda-time"), () =>
+                Run("dotnet", $"test src/Marten.NodaTime.Testing/Marten.NodaTime.Testing.csproj --framework netcoreapp2.1 --configuration {configuration} --no-build"));
+
+            Target("test-marten", DependsOn("compile", "test-noda-time"), () =>
                 Run("dotnet", $"test src/Marten.Testing/Marten.Testing.csproj --framework netcoreapp2.1 --configuration {configuration} --no-build"));
+
+            Target("test", DependsOn("test-marten", "test-noda-time"));
 
             Target("storyteller", DependsOn("compile"), () =>
                 Run("dotnet", $"run --framework netcoreapp2.1 --culture en-US", "src/Marten.Storyteller"));
@@ -43,14 +51,11 @@ namespace martenbuild
             Target("open_st", DependsOn("compile"), () =>
                 Run("dotnet", $"storyteller open --framework netcoreapp2.1 --culture en-US", "src/Marten.Storyteller"));
 
-            Target("docs-restore", () =>
-                Run("dotnet", "restore", "tools/stdocs"));
-
-            Target("docs", DependsOn("docs-restore"), () =>
-                RunStoryTellerDocs($"run -d ../../documentation -c ../../src -v {BUILD_VERSION}"));
+            Target("docs", () =>
+                Run("dotnet", $"stdocs run -d documentation -c src -v {BUILD_VERSION}"));
 
             // Exports the documentation to jasperfx.github.io/marten - requires Git access to that repo though!
-            Target("publish", () =>
+            Target("publish-docs", () =>
             {
                 const string docTargetDir = "doc-target";
 
@@ -59,8 +64,7 @@ namespace martenbuild
                 // Run("git", "config user.email user_email", docTargetDir);
                 // Run("git", "config user.name user_name", docTargetDir);
 
-                RunStoryTellerDocs(
-                    $"export ../../{docTargetDir} ProjectWebsite -d ../../documentation -c ../../src -v {BUILD_VERSION} --project marten");
+                Run("dotnet", $"stdocs export {docTargetDir} ProjectWebsite -d documentation -c src -v {BUILD_VERSION} --project marten");
 
                 Run("git", "add --all", docTargetDir);
                 Run("git", $"commit -a -m \"Documentation Update for {BUILD_VERSION}\" --allow-empty", docTargetDir);
@@ -80,7 +84,7 @@ namespace martenbuild
                 }
             });
 
-            Target("pack", DependsOn("compile"), ForEach("./src/Marten", "./src/Marten.CommandLine"), project =>
+            Target("pack", DependsOn("compile"), ForEach("./src/Marten", "./src/Marten.CommandLine", "./src/Marten.NodaTime"), project =>
                 Run("dotnet", $"pack {project} -o ./../../artifacts --configuration Release"));
 
             RunTargetsAndExit(args);
@@ -117,22 +121,7 @@ namespace martenbuild
             baseDir.Delete(true);
         }
 
-        private static void RunNpm(string args)
-        {
-            if (Environment.OSVersion.Platform != PlatformID.Unix && Environment.OSVersion.Platform != PlatformID.MacOSX)
-            {
-                Run("cmd.exe", $"/c npm {args}");
-            }
-            else
-            {
-                Run("npm", args);
-            }
-        }
-
-        private static void RunStoryTellerDocs(string args)
-        {
-            Run("dotnet", "restore", "tools/stdocs");
-            Run("dotnet", $"stdocs {args}", "tools/stdocs");
-        }
+        private static void RunNpm(string args) =>
+            Run("npm", args, windowsName: "cmd.exe", windowsArgs: $"/c npm {args}");
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using Marten.Services;
 using Xunit;
@@ -6,7 +6,7 @@ using Xunit;
 namespace Marten.Testing.Linq
 {
     [ControlledQueryStoryteller]
-    public class query_with_dates_Tests : DocumentSessionFixture<NulloIdentityMap>
+    public class query_with_dates_Tests: DocumentSessionFixture<NulloIdentityMap>
     {
         [Fact]
         public void can_select_DateTimeOffset_and_will_return_localtime()
@@ -22,7 +22,7 @@ namespace Marten.Testing.Linq
 
             using (var query = theStore.QuerySession())
             {
-                var dateOffset = query.Query<Target>().Select(x => x.DateOffset).Single();
+                var dateOffset = query.Query<Target>().Where(x => x.Id == document.Id).Select(x => x.DateOffset).Single();
 
                 // be aware of the Npgsql DateTime mapping https://www.npgsql.org/doc/types/datetime.html
                 dateOffset.ShouldBeEqualWithDbPrecision(document.DateOffset.ToLocalTime());

@@ -1,10 +1,10 @@
-﻿using Marten.Schema;
+using Marten.Schema;
 using Marten.Testing.Documents;
 using Xunit;
 
 namespace Marten.Testing.Schema
 {
-    public class DocumentMapping_schema_patch_writing : IntegratedFixture
+    public class DocumentMapping_schema_patch_writing: IntegratedFixture
     {
         [Fact]
         public void creates_the_table_in_update_ddl_if_all_new()
@@ -111,13 +111,11 @@ namespace Marten.Testing.Schema
                 var patch = store.Schema.ToPatch();
 
                 patch.RollbackDDL.ShouldContain("drop index");
-                
+
                 patch.RollbackDDL.ShouldContain("CREATE INDEX mt_doc_user_idx_user_name");
-
-
             }
         }
-        
+
         [Fact]
         public void can_revert_indexes_that_changed_in_non_public_schema()
         {
@@ -140,10 +138,29 @@ namespace Marten.Testing.Schema
                 var patch = store.Schema.ToPatch();
 
                 patch.RollbackDDL.ShouldContain("drop index other.mt_doc_user_idx_user_name;");
-                
+
                 patch.RollbackDDL.ShouldContain("CREATE INDEX mt_doc_user_idx_user_name ON other.mt_doc_user USING btree (user_name);");
+            }
+        }
 
+        [Fact]
+        public void can_create_and_drop_foreignkeys_todocuments_that_were_added()
+        {
+            theStore.Tenancy.Default.EnsureStorageExists(typeof(User));
 
+            using (var store = DocumentStore.For(_ =>
+            {
+                _.Connection(ConnectionSource.ConnectionString);
+                _.Schema.For<Issue>().ForeignKey<User>(x => x.AssigneeId, fkd => fkd.CascadeDeletes = true);
+            }))
+            {
+                var patch = store.Schema.ToPatch();
+
+                patch.UpdateDDL.ShouldContain(@"ADD CONSTRAINT mt_doc_issue_assignee_id_fkey FOREIGN KEY (assignee_id)
+                    REFERENCES public.mt_doc_user (id)
+                    ON DELETE CASCADE;", StringComparisonOption.NormalizeWhitespaces);
+
+                store.Schema.ApplyAllConfiguredChangesToDatabase();
             }
         }
     }

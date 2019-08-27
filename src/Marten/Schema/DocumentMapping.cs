@@ -10,6 +10,7 @@ using Baseline.Reflection;
 using Marten.Linq;
 using Marten.Schema.Identity;
 using Marten.Schema.Identity.Sequences;
+using Marten.Schema.Indexing.Unique;
 using Marten.Services.Includes;
 using Marten.Storage;
 using Marten.Util;
@@ -18,7 +19,7 @@ using Remotion.Linq;
 
 namespace Marten.Schema
 {
-    public class DocumentMapping : FieldCollection, IDocumentMapping, IQueryableDocument, IFeatureSchema
+    public class DocumentMapping: FieldCollection, IDocumentMapping, IQueryableDocument, IFeatureSchema
     {
         public const string BaseAlias = "BASE";
         public const string TablePrefix = "mt_doc_";
@@ -70,7 +71,8 @@ namespace Marten.Schema
                 }
                 else
                 {
-                    if (value.GetMemberType() != typeof(Guid)) throw new ArgumentOutOfRangeException(nameof(value), "The Version member has to be of type Guid");
+                    if (value.GetMemberType() != typeof(Guid))
+                        throw new ArgumentOutOfRangeException(nameof(value), "The Version member has to be of type Guid");
                     UseOptimisticConcurrency = true;
                     _versionMember = value;
                 }
@@ -135,7 +137,8 @@ namespace Marten.Schema
             get { return _alias; }
             set
             {
-                if (value.IsEmpty()) throw new ArgumentNullException(nameof(value));
+                if (value.IsEmpty())
+                    throw new ArgumentNullException(nameof(value));
 
                 _alias = value.ToLower();
             }
@@ -298,8 +301,15 @@ namespace Marten.Schema
 
         public static MemberInfo FindIdMember(Type documentType)
         {
-            return (MemberInfo)GetProperties(documentType).FirstOrDefault(x => x.Name.EqualsIgnoreCase("id") || x.HasAttribute<IdentityAttribute>())
-                   ?? documentType.GetFields().FirstOrDefault(x => x.Name.EqualsIgnoreCase("id") || x.HasAttribute<IdentityAttribute>());
+            // Order of finding id member should be
+            // 1) IdentityAttribute on property
+            // 2) IdentityAttribute on field
+            // 3) Id Property
+            // 4) Id field
+            return GetProperties(documentType).FirstOrDefault(x => x.HasAttribute<IdentityAttribute>())
+                   ?? documentType.GetFields().FirstOrDefault(x => x.HasAttribute<IdentityAttribute>())
+                   ?? (MemberInfo)GetProperties(documentType).FirstOrDefault(x => x.Name.EqualsIgnoreCase("id"))
+                   ?? documentType.GetFields().FirstOrDefault(x => x.Name.EqualsIgnoreCase("id"));
         }
 
         private static PropertyInfo[] GetProperties(Type type)
@@ -338,7 +348,8 @@ namespace Marten.Schema
 
         public string AliasFor(Type subclassType)
         {
-            if (subclassType == DocumentType) return BaseAlias;
+            if (subclassType == DocumentType)
+                return BaseAlias;
 
             var type = _subClasses.FirstOrDefault(x => x.DocumentType == subclassType);
             if (type == null)
@@ -352,7 +363,8 @@ namespace Marten.Schema
 
         public Type TypeFor(string alias)
         {
-            if (alias == BaseAlias) return DocumentType;
+            if (alias == BaseAlias)
+                return DocumentType;
 
             var subClassMapping = _subClasses.FirstOrDefault(x => x.Alias.EqualsIgnoreCase(alias));
             if (subClassMapping == null)
@@ -410,7 +422,7 @@ namespace Marten.Schema
             return index;
         }
 
-        public IIndexDefinition AddUniqueIndex(MemberInfo[][] members, UniqueIndexType indexType = UniqueIndexType.Computed, string indexName = null, IndexMethod indexMethod = IndexMethod.btree)
+        public IIndexDefinition AddUniqueIndex(MemberInfo[][] members, UniqueIndexType indexType = UniqueIndexType.Computed, string indexName = null, IndexMethod indexMethod = IndexMethod.btree, TenancyScope tenancyScope = TenancyScope.Global)
         {
             if (indexType == UniqueIndexType.DuplicatedField)
             {
@@ -420,6 +432,7 @@ namespace Marten.Schema
                 index.IndexName = indexName;
                 index.Method = indexMethod;
                 index.IsUnique = true;
+                index.TenancyScope = tenancyScope;
 
                 return index;
             }
@@ -431,7 +444,8 @@ namespace Marten.Schema
                 {
                     Method = indexMethod,
                     IndexName = indexName,
-                    IsUnique = true
+                    IsUnique = true,
+                    TenancyScope = tenancyScope
                 };
 
                 var existing = Indexes.OfType<ComputedIndex>().FirstOrDefault(x => x.IndexName == index.IndexName);
@@ -499,7 +513,8 @@ namespace Marten.Schema
 
         public ForeignKeyDefinition AddForeignKey(MemberInfo[] members, Type referenceType)
         {
-            var referenceMapping = _storeOptions.Storage.MappingFor(referenceType);
+            var referenceMapping = referenceType != DocumentType ?
+                _storeOptions.Storage.MappingFor(referenceType) : this;
 
             var duplicateField = DuplicateField(members);
 
@@ -543,9 +558,11 @@ namespace Marten.Schema
         private bool idMemberIsSettable()
         {
             var field = IdMember as FieldInfo;
-            if (field != null) return field.IsPublic;
+            if (field != null)
+                return field.IsPublic;
             var property = IdMember as PropertyInfo;
-            if (property != null) return property.CanWrite && property.SetMethod != null;
+            if (property != null)
+                return property.CanWrite && property.SetMethod != null;
             return false;
         }
 
@@ -653,6 +670,10 @@ namespace Marten.Schema
 
             foreach (var foreignKey in ForeignKeys)
             {
+                // ExternalForeignKeyDefinition's will have a null ReferenceDocumentType, so we can skip it
+                if (foreignKey.ReferenceDocumentType == null)
+                    continue;
+
                 yield return foreignKey.ReferenceDocumentType;
             }
         }
@@ -688,7 +709,7 @@ namespace Marten.Schema
         }
     }
 
-    public class DocumentMapping<T> : DocumentMapping
+    public class DocumentMapping<T>: DocumentMapping
     {
         public DocumentMapping(StoreOptions storeOptions) : base(typeof(T), storeOptions)
         {
@@ -711,7 +732,8 @@ namespace Marten.Schema
 
             var duplicateField = DuplicateField(visitor.Members.ToArray(), pgType);
 
-            if (dbType.HasValue) duplicateField.DbType = dbType.Value;
+            if (dbType.HasValue)
+                duplicateField.DbType = dbType.Value;
 
             var indexDefinition = AddIndex(duplicateField.ColumnName);
             configure?.Invoke(indexDefinition);
@@ -801,17 +823,24 @@ namespace Marten.Schema
 
         public void UniqueIndex(UniqueIndexType indexType, string indexName, params Expression<Func<T, object>>[] expressions)
         {
+            UniqueIndex(indexType, indexName, tenancyScope: TenancyScope.Global, expressions);
+        }
+
+        public void UniqueIndex(UniqueIndexType indexType, string indexName, TenancyScope tenancyScope = TenancyScope.Global, params Expression<Func<T, object>>[] expressions)
+        {
             AddUniqueIndex(
                 expressions
-                .Select(e =>
-                {
-                    var visitor = new FindMembers();
-                    visitor.Visit(e);
-                    return visitor.Members.ToArray();
-                })
-                .ToArray(),
+                    .Select(e =>
+                    {
+                        var visitor = new FindMembers();
+                        visitor.Visit(e);
+                        return visitor.Members.ToArray();
+                    })
+                    .ToArray(),
                 indexType,
-                indexName);
+                indexName,
+                IndexMethod.btree,
+                tenancyScope);
         }
 
         /// <summary>
@@ -862,6 +891,13 @@ namespace Marten.Schema
                 regConfig);
         }
 
+        /// <summary>
+        /// Adds foreign key index to other marten document
+        /// </summary>
+        /// <typeparam name="TReference">Document type</typeparam>
+        /// <param name="expression">Field selector</param>
+        /// <param name="foreignKeyConfiguration">customize foreign key configuration</param>
+        /// <param name="indexConfiguration">customize index configuration</param>
         public void ForeignKey<TReference>(
             Expression<Func<T, object>> expression,
             Action<ForeignKeyDefinition> foreignKeyConfiguration = null,
@@ -875,6 +911,33 @@ namespace Marten.Schema
 
             var indexDefinition = AddIndex(foreignKeyDefinition.ColumnName);
             indexConfiguration?.Invoke(indexDefinition);
+        }
+
+        /// <summary>
+        /// Adds foreign key index to non-marten table
+        /// </summary>
+        /// <param name="expression">Field selector</param>
+        /// <param name="tableName">external table name</param>
+        /// <param name="columnName">referenced column to external table</param>
+        /// <param name="schemaName">external table schema name, if not provided then DatabaseSchemaName from store options will be used</param>
+        /// <param name="foreignKeyConfiguration">customize foreign key configuration</param>
+        public void ForeignKey(
+            Expression<Func<T, object>> expression,
+            string tableName,
+            string columnName,
+            string schemaName = null,
+            Action<ExternalForeignKeyDefinition> foreignKeyConfiguration = null)
+        {
+            schemaName = schemaName ?? DatabaseSchemaName;
+
+            var visitor = new FindMembers();
+            visitor.Visit(expression);
+
+            var duplicateField = DuplicateField(visitor.Members.ToArray());
+
+            var foreignKey = new ExternalForeignKeyDefinition(duplicateField.ColumnName, this, schemaName, tableName, columnName);
+            foreignKeyConfiguration?.Invoke(foreignKey);
+            ForeignKeys.Add(foreignKey);
         }
     }
 }

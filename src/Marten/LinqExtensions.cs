@@ -79,7 +79,8 @@ namespace Marten
         /// <returns></returns>
         public static bool IsEmpty<T>(this IEnumerable<T> enumerable)
         {
-            if (enumerable == null) return true;
+            if (enumerable == null)
+                return true;
 
             if (enumerable is string)
             {
@@ -183,6 +184,33 @@ namespace Marten
         /// See: https://www.postgresql.org/docs/10/static/textsearch-controls.html#TEXTSEARCH-PARSING-QUERIES
         /// </remarks>
         public static bool PhraseSearch<T>(this T variable, string searchTerm, string regConfig)
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// Performs a full text search against <typeparamref name="T"/> using the 'websearch_to_tsquery' search function
+        /// </summary>
+        /// <param name="searchTerm">The text to search for.  Uses an alternative syntax to the other search functions, similar to the one used by web search engines</param>
+        /// <remarks>
+        /// Supported from Postgres 11
+        /// See: https://www.postgresql.org/docs/11/textsearch-controls.html#TEXTSEARCH-PARSING-QUERIES
+        /// </remarks>
+        public static bool WebStyleSearch<T>(this T variable, string searchTerm)
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// Performs a full text search against <typeparamref name="T"/> using the 'websearch_to_tsquery' search function
+        /// </summary>
+        /// <param name="searchTerm">The text to search for.  Uses an alternative syntax to the other search functions, similar to the one used by web search engines</param>
+        /// <param name="regConfig">The dictionary config passed to the 'websearch_to_tsquery' function, must match the config parameter used by <seealso cref="DocumentMapping.AddFullTextIndex(string)"/></param>
+        /// <remarks>
+        /// Supported from Postgres 11
+        /// See: https://www.postgresql.org/docs/11/textsearch-controls.html#TEXTSEARCH-PARSING-QUERIES
+        /// </remarks>
+        public static bool WebStyleSearch<T>(this T variable, string searchTerm, string regConfig)
         {
             return true;
         }

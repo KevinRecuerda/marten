@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Marten.Schema;
 using Marten.Storage;
 using Marten.Testing.Documents;
+using Marten.Testing.Harness;
 using Shouldly;
 using Xunit;
 
@@ -81,7 +82,7 @@ namespace Marten.Testing.Acceptance
 
     // ENDSAMPLE
 
-    public class full_text_index : IntegratedFixture
+    public class full_text_index: IntegratedFixture
     {
         public void using_whole_document_full_text_index_through_store_options_with_default()
         {
@@ -175,7 +176,7 @@ namespace Marten.Testing.Acceptance
             // ENDSAMPLE
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void using_full_text_query_through_query_session()
         {
             // SAMPLE: using_full_text_query_through_query_session
@@ -207,7 +208,7 @@ namespace Marten.Testing.Acceptance
             result.Count().ShouldBe(1);
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void search_in_query_sample()
         {
             StoreOptions(_ => _.RegisterDocumentType<BlogPost>());
@@ -234,7 +235,7 @@ namespace Marten.Testing.Acceptance
             }
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void plain_text_search_in_query_sample()
         {
             StoreOptions(_ => _.RegisterDocumentType<BlogPost>());
@@ -261,7 +262,7 @@ namespace Marten.Testing.Acceptance
             }
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void phrase_search_in_query_sample()
         {
             StoreOptions(_ => _.RegisterDocumentType<BlogPost>());
@@ -288,7 +289,34 @@ namespace Marten.Testing.Acceptance
             }
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "11.0")]
+        public void web_search_in_query_sample()
+        {
+            StoreOptions(_ => _.RegisterDocumentType<BlogPost>());
+
+            var expectedId = Guid.NewGuid();
+
+            using (var session = theStore.OpenSession())
+            {
+                session.Store(new BlogPost { Id = expectedId, EnglishText = "somefilter" });
+                session.Store(new BlogPost { Id = Guid.NewGuid(), ItalianText = "somefilter" });
+                session.SaveChanges();
+            }
+
+            using (var session = theStore.OpenSession())
+            {
+                // SAMPLE: web_search_in_query_sample
+                var posts = session.Query<BlogPost>()
+                    .Where(x => x.WebStyleSearch("somefilter"))
+                    .ToList();
+                // ENDSAMPLE
+
+                posts.Count.ShouldBe(1);
+                posts.Single().Id.ShouldBe(expectedId);
+            }
+        }
+
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void text_search_combined_with_other_query_sample()
         {
             StoreOptions(_ => _.RegisterDocumentType<BlogPost>());
@@ -317,7 +345,7 @@ namespace Marten.Testing.Acceptance
             }
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void text_search_with_non_default_regConfig_sample()
         {
             StoreOptions(_ => _.RegisterDocumentType<BlogPost>());
@@ -344,19 +372,19 @@ namespace Marten.Testing.Acceptance
             }
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void should_search_with_store_options_default_configuration()
         {
             SearchShouldBeSuccessfulFor(_ => _.Schema.For<User>().FullTextIndex());
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void should_search_with_store_options_for_specific_members()
         {
             SearchShouldBeSuccessfulFor(_ => _.Schema.For<User>().FullTextIndex(d => d.FirstName, d => d.LastName));
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void should_search_with_store_options_with_multipleIndexes()
         {
             const string frenchRegConfig = "french";
@@ -392,7 +420,7 @@ namespace Marten.Testing.Acceptance
             }
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void should_search_by_tenant_with_tenancy_conjoined()
         {
             StoreOptions(_ =>
@@ -454,13 +482,13 @@ namespace Marten.Testing.Acceptance
             }
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         private void should_search_using_a_single_property_full_text_index_through_attribute_with_custom_settings()
         {
             StoreOptions(_ => _.Schema.For<UserDetails>());
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void creating_a_full_text_index_should_create_the_index_on_the_table()
         {
             StoreOptions(_ => _.Schema.For<Target>().FullTextIndex());
@@ -478,7 +506,7 @@ namespace Marten.Testing.Acceptance
             ddl.ShouldContain("to_tsvector");
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void not_specifying_an_index_name_should_generate_default_index_name()
         {
             StoreOptions(_ => _.Schema.For<Target>().FullTextIndex());
@@ -492,7 +520,7 @@ namespace Marten.Testing.Acceptance
             ddl.ShouldContain("mt_doc_target_idx_fts");
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void specifying_an_index_name_without_marten_prefix_should_prepend_prefix()
         {
             StoreOptions(_ => _.Schema.For<Target>().FullTextIndex(configure: x => x.IndexName = "doesnt_have_prefix"));
@@ -506,7 +534,7 @@ namespace Marten.Testing.Acceptance
             ddl.ShouldContain("mt_doesnt_have_prefix");
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void specifying_an_index_name_with_mixed_case_should_result_in_lower_case_name()
         {
             StoreOptions(_ => _.Schema.For<Target>().FullTextIndex(configure: x => x.IndexName = "Doesnt_Have_PreFix"));
@@ -520,7 +548,7 @@ namespace Marten.Testing.Acceptance
             ddl.ShouldContain("mt_doesnt_have_prefix");
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void specifying_an_index_name_with_marten_prefix_remains_unchanged()
         {
             StoreOptions(_ => _.Schema.For<Target>().FullTextIndex(configure: x => x.IndexName = "mt_i_have_prefix"));
@@ -534,7 +562,7 @@ namespace Marten.Testing.Acceptance
             ddl.ShouldContain("mt_i_have_prefix");
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void specifying_an_index_name_with_marten_prefix_and_mixed_case_results_in_lowercase_name()
         {
             StoreOptions(_ => _.Schema.For<Target>().FullTextIndex(configure: x => x.IndexName = "mT_I_hAve_preFIX"));
@@ -548,7 +576,7 @@ namespace Marten.Testing.Acceptance
             ddl.ShouldContain("mt_i_have_prefix");
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void creating_a_full_text_index_with_custom_data_configuration_should_create_the_index_without_regConfig_in_indexname_custom_data_configuration()
         {
             const string DataConfig = "(data ->> 'AnotherString' || ' ' || 'test')";
@@ -569,7 +597,7 @@ namespace Marten.Testing.Acceptance
                 );
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void creating_a_full_text_index_with_custom_data_configuration_and_custom_regConfig_should_create_the_index_with_custom_regConfig_in_indexname_custom_data_configuration()
         {
             const string DataConfig = "(data ->> 'AnotherString' || ' ' || 'test')";
@@ -593,7 +621,7 @@ namespace Marten.Testing.Acceptance
                 );
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void creating_a_full_text_index_with_custom_data_configuration_and_custom_regConfig_custom_indexName_should_create_the_index_with_custom_indexname_custom_data_configuration()
         {
             const string DataConfig = "(data ->> 'AnotherString' || ' ' || 'test')";
@@ -619,7 +647,7 @@ namespace Marten.Testing.Acceptance
                 );
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void creating_a_full_text_index_with_single_member_should_create_the_index_without_regConfig_in_indexname_and_member_selectors()
         {
             StoreOptions(_ => _.Schema.For<Target>().FullTextIndex(d => d.String));
@@ -634,7 +662,7 @@ namespace Marten.Testing.Acceptance
                 );
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void creating_a_full_text_index_with_multiple_members_should_create_the_index_without_regConfig_in_indexname_and_members_selectors()
         {
             StoreOptions(_ => _.Schema.For<Target>().FullTextIndex(d => d.String, d => d.AnotherString));
@@ -649,7 +677,7 @@ namespace Marten.Testing.Acceptance
                 );
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void creating_a_full_text_index_with_multiple_members_and_custom_configuration_should_create_the_index_with_custom_configuration_and_members_selectors()
         {
             const string IndexName = "custom_index_name";
@@ -674,7 +702,7 @@ namespace Marten.Testing.Acceptance
                 );
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void creating_multiple_full_text_index_with_different_regConfigs_and_custom_data_config_should_create_the_indexes_with_different_recConfigs()
         {
             const string frenchRegConfig = "french";
@@ -702,7 +730,7 @@ namespace Marten.Testing.Acceptance
                 );
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void using_a_full_text_index_through_attribute_on_class_with_default()
         {
             StoreOptions(_ => _.RegisterDocumentType<Book>());
@@ -718,7 +746,7 @@ namespace Marten.Testing.Acceptance
                 );
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void using_a_single_property_full_text_index_through_attribute_with_default()
         {
             StoreOptions(_ => _.RegisterDocumentType<UserProfile>());
@@ -734,7 +762,7 @@ namespace Marten.Testing.Acceptance
                 );
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void using_a_single_property_full_text_index_through_attribute_with_custom_settings()
         {
             StoreOptions(_ => _.RegisterDocumentType<UserDetails>());
@@ -750,7 +778,7 @@ namespace Marten.Testing.Acceptance
                 );
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void using_multiple_properties_full_text_index_through_attribute_with_default()
         {
             StoreOptions(_ => _.RegisterDocumentType<Article>());
@@ -766,7 +794,7 @@ namespace Marten.Testing.Acceptance
                 );
         }
 
-        [Fact]
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
         public void using_multiple_properties_full_text_index_through_attribute_with_custom_settings()
         {
             const string frenchRegConfig = "french";
@@ -799,6 +827,86 @@ namespace Marten.Testing.Acceptance
                     regConfig: italianRegConfig,
                     dataConfig: $"((data ->> '{nameof(BlogPost.ItalianText)}'))"
                 );
+        }
+
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
+        public void wholedoc_fts_index_comparison_works()
+        {
+            StoreOptions(_ =>
+            {
+                _.Schema.For<User>().FullTextIndex();
+            });
+
+            // Apply changes
+            theStore.Schema.ApplyAllConfiguredChangesToDatabase();
+
+            // Look at updates after that
+            var patch = theStore.Schema.ToPatch();
+
+            Assert.DoesNotContain("drop index public.mt_doc_user_idx_fts", patch.UpdateDDL);
+        }
+
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
+        public void fts_index_comparison_must_take_into_account_automatic_cast()
+        {
+            StoreOptions(_ =>
+            {
+                _.Schema.For<Company>()
+                    .FullTextIndex(x => x.Name);
+            });
+
+            // Apply changes
+            theStore.Schema.ApplyAllConfiguredChangesToDatabase();
+
+            // Look at updates after that
+            var patch = theStore.Schema.ToPatch();
+
+            Assert.DoesNotContain("drop index public.mt_doc_company_idx_fts", patch.UpdateDDL);
+        }
+
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
+        public void multifield_fts_index_comparison_must_take_into_account_automatic_cast()
+        {
+            StoreOptions(_ =>
+            {
+                _.Schema.For<User>()
+                    .FullTextIndex(x => x.FirstName, x => x.LastName);
+            });
+
+            // Apply changes
+            theStore.Schema.ApplyAllConfiguredChangesToDatabase();
+
+            // Look at updates after that
+            var patch = theStore.Schema.ToPatch();
+
+            Assert.DoesNotContain("drop index public.mt_doc_user_idx_fts", patch.UpdateDDL);
+        }
+
+        [PgVersionTargetedFact(MinimumVersion = "10.0")]
+        public void modified_fts_index_comparison_must_generate_drop()
+        {
+            StoreOptions(_ =>
+            {
+                _.Schema.For<User>()
+                    .FullTextIndex(x => x.FirstName);
+            });
+
+            // Apply changes
+            theStore.Schema.ApplyAllConfiguredChangesToDatabase();
+
+            // Change indexed fields
+            var store = DocumentStore.For(_ =>
+            {
+                _.Connection(ConnectionSource.ConnectionString);
+
+                _.Schema.For<User>()
+                    .FullTextIndex(x => x.FirstName, x => x.LastName);
+            });
+
+            // Look at updates after that
+            var patch = store.Schema.ToPatch();
+
+            Assert.Contains("drop index public.mt_doc_user_idx_fts", patch.UpdateDDL);
         }
     }
 

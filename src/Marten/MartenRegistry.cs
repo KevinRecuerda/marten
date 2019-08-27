@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
@@ -6,6 +6,7 @@ using Marten.Linq;
 using Marten.Schema;
 using Marten.Schema.Identity;
 using Marten.Schema.Identity.Sequences;
+using Marten.Schema.Indexing.Unique;
 using Marten.Storage;
 using NpgsqlTypes;
 
@@ -225,6 +226,22 @@ namespace Marten
             }
 
             /// <summary>
+            /// Creates a unique index on this data member within the JSON data storage
+            /// </summary>
+            /// <param name="indexType">Type of the index</param>
+            /// <param name="indexTenancyStyle">Style of tenancy</param>
+            /// <param name="indexName">Name of the index</param>
+            /// <param name="tenancyScope">Whether the unique index applies on a per tenant basis</param>
+            /// <param name="expressions"></param>
+            /// <returns></returns>
+            public DocumentMappingExpression<T> UniqueIndex(UniqueIndexType indexType, string indexName, TenancyScope tenancyScope = TenancyScope.Global, params Expression<Func<T, object>>[] expressions)
+            {
+                alter = m => m.UniqueIndex(indexType, indexName, tenancyScope, expressions);
+
+                return this;
+            }
+
+            /// <summary>
             /// Creates an index on the predefined Last Modified column
             /// </summary>
             /// <param name="configure"></param>
@@ -272,6 +289,14 @@ namespace Marten
                 Action<IndexDefinition> indexConfiguration = null)
             {
                 alter = m => m.ForeignKey<TReference>(expression, foreignKeyConfiguration, indexConfiguration);
+
+                return this;
+            }
+
+            public DocumentMappingExpression<T> ForeignKey(Expression<Func<T, object>> expression, string schemaName, string tableName, string columnName,
+                                                           Action<ExternalForeignKeyDefinition> foreignKeyConfiguration = null)
+            {
+                alter = m => m.ForeignKey(expression, tableName, columnName, schemaName, foreignKeyConfiguration);
 
                 return this;
             }

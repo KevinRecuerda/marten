@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,12 +8,13 @@ using Baseline;
 using Marten.Events;
 using Marten.Patching;
 using Marten.Schema;
+using Marten.Services.Deletes;
 using Marten.Storage;
 using Marten.Util;
 
 namespace Marten.Services
 {
-    public class UnitOfWork : IUnitOfWork
+    public class UnitOfWork: IUnitOfWork
     {
         private readonly ConcurrentDictionary<Guid, EventStream> _events = new ConcurrentDictionary<Guid, EventStream>();
 
@@ -50,7 +51,7 @@ namespace Marten.Services
 
         public IEnumerable<object> Updates()
         {
-            return _operations.Value.Enumerate().SelectMany(x => x.Value.OfType<UpsertDocument>().Select(u => u.Document))
+            return _operations.Value.Enumerate().SelectMany(x => x.Value.Where(t => t is UpsertDocument || t is UpdateDocument).OfType<DocumentStorageOperation>().Select(u => u.Document))
                 .Union(detectTrackerChanges().Select(x => x.Document));
         }
 
@@ -80,7 +81,7 @@ namespace Marten.Services
         }
 
         public IEnumerable<PatchOperation> Patches()
-        {            
+        {
             return _operations.Value.Enumerate().SelectMany(x => x.Value).OfType<PatchOperation>();
         }
 
@@ -108,7 +109,6 @@ namespace Marten.Services
         {
             _trackers.Remove(tracker);
         }
-
 
         public void StoreStream(EventStream stream)
         {
@@ -148,7 +148,6 @@ namespace Marten.Services
             var list = operationsFor(typeof(T));
 
             list.AddRange(documents.Select(x => new UpsertDocument(x)));
-
         }
 
         public void StoreUpdates<T>(params T[] documents)
@@ -156,7 +155,6 @@ namespace Marten.Services
             var list = operationsFor(typeof(T));
 
             list.AddRange(documents.Select(x => new UpdateDocument(x)));
-
         }
 
         public void StoreInserts<T>(params T[] documents)
@@ -165,7 +163,6 @@ namespace Marten.Services
 
             list.AddRange(documents.Select(x => new InsertDocument(x)));
         }
-
 
         public ChangeSet ApplyChanges(UpdateBatch batch)
         {
@@ -198,36 +195,55 @@ namespace Marten.Services
         {
             var changes = buildChangeSet(batch);
 
-            await batch.ExecuteAsync(token).ConfigureAwait(false);            
+            await batch.ExecuteAsync(token).ConfigureAwait(false);
 
             ClearChanges(changes.Changes);
 
             return changes;
         }
 
+        private bool shouldSort(List<IStorageOperation> operations, out IComparer<IStorageOperation> comparer)
+        {
+            comparer = null;
+            if (operations.Count <= 1)
+                return false;
+
+            if (operations.Select(x => x.DocumentType).Distinct().Count() == 1)
+                return false;
+
+            var types = _operations.Value.Enumerate().Select(x => x.Key).TopologicalSort(GetTypeDependencies).ToArray();
+
+            if (operations.OfType<IDeletion>().Any())
+            {
+                comparer = new StorageOperationWithDeletionsComparer(types);
+            }
+            else
+            {
+                comparer = new StorageOperationByTypeComparer(types);
+            }
+
+            return true;
+        }
+
         private DocumentChange[] determineChanges(UpdateBatch batch)
         {
-            var types = _operations.Value.Enumerate().Select(x => x.Key).TopologicalSort(GetTypeDependencies);
-
-            foreach (var type in types)
+            var allOperations = _operations.Value.Enumerate().SelectMany(x => x.Value).ToList();
+            if (shouldSort(allOperations, out var comparer))
             {
-                if (!_operations.Value.TryFind(type, out var value))
-                {
-                    continue;
-                }
+                allOperations.Sort(comparer);
+            }
 
-                foreach (var operation in value)
+            foreach (var operation in allOperations)
+            {
+                // No Virginia, I do not approve of this but I'm pulling all my hair
+                // out as is trying to make this work
+                if (operation is DocumentStorageOperation)
                 {
-                    // No Virginia, I do not approve of this but I'm pulling all my hair
-                    // out as is trying to make this work
-                    if (operation is DocumentStorageOperation)
-                    {
-                        operation.As<DocumentStorageOperation>().Persist(batch, _tenant);
-                    }
-                    else
-                    {
-                        batch.Add(operation);
-                    }
+                    operation.As<DocumentStorageOperation>().Persist(batch, _tenant);
+                }
+                else
+                {
+                    batch.Add(operation);
                 }
             }
 
@@ -262,7 +278,7 @@ namespace Marten.Services
             if (documentMapping == null)
                 return Enumerable.Empty<Type>();
 
-            return documentMapping.ForeignKeys.Where(x => x.ReferenceDocumentType != type)
+            return documentMapping.ForeignKeys.Where(x => x.ReferenceDocumentType != type && x.ReferenceDocumentType != null)
                 .SelectMany(keyDefinition =>
                 {
                     var results = new List<Type>();
@@ -294,12 +310,10 @@ namespace Marten.Services
                 var list = operationsFor(operation.DocumentType);
                 list.Add(operation);
             }
-
-
         }
 
         private void ClearChanges(DocumentChange[] changes)
-        {                        
+        {
             _operations.Swap(o => ImHashMap<Type, IList<IStorageOperation>>.Empty);
             _events.Clear();
             changes.Each(x => x.ChangeCommitted());
@@ -315,13 +329,10 @@ namespace Marten.Services
             return _operations.Value.Enumerate().SelectMany(x => x.Value.OfType<DocumentStorageOperation>()).Any(x => object.ReferenceEquals(entity, x.Document));
         }
 
-
-
         public IEnumerable<T> NonDocumentOperationsOf<T>() where T : IStorageOperation
         {
             return _ancillaryOperations.OfType<T>();
         }
-
 
         public bool HasStream(string stream)
         {
@@ -342,11 +353,126 @@ namespace Marten.Services
             {
                 operations.Remove(operation);
             }
-           
+        }
+
+        private class StorageOperationWithDeletionsComparer: IComparer<IStorageOperation>
+        {
+            private readonly Type[] _topologicallyOrderedTypes;
+
+            public StorageOperationWithDeletionsComparer(Type[] topologicallyOrderedTypes)
+            {
+                _topologicallyOrderedTypes = topologicallyOrderedTypes;
+            }
+
+            public int Compare(IStorageOperation x, IStorageOperation y)
+            {
+                if (ReferenceEquals(x, y))
+                {
+                    return 0;
+                }
+
+                if (x?.DocumentType == null || y?.DocumentType == null)
+                {
+                    return 0;
+                }
+
+                // Maintain order if same document type and same operation
+                if (x.DocumentType == y.DocumentType && x.GetType() == y.GetType())
+                {
+                    return 0;
+                }
+
+                var xIndex = FindIndex(x);
+                var yIndex = FindIndex(y);
+
+                var xIsDelete = x is DeleteWhere || x is DeleteById;
+                var yIsDelete = y is DeleteWhere || y is DeleteById;
+
+                if (xIsDelete != yIsDelete)
+                {
+                    // Arbitrary order if one is a delete but the other is not, because this will force the sorting
+                    // to try and compare these documents against others and fall in to the below checks.
+                    return -1;
+                }
+
+                if (xIsDelete)
+                {
+                    // Both are deletes, so we need reverse topological order to inserts, updates and upserts
+                    return yIndex.CompareTo(xIndex);
+                }
+
+                // Both are inserts, updates or upserts so topological
+                return xIndex.CompareTo(yIndex);
+            }
+
+            private int FindIndex(IStorageOperation x)
+            {
+                // Will loop through up the inheritance chain until reaches the end or the index is found, used
+                // to handle inheritance as topologically sorted array may not have the subclasses listed
+                var documentType = x.DocumentType;
+                var index = 0;
+
+                do
+                {
+                    index = _topologicallyOrderedTypes.IndexOf(documentType);
+                    documentType = documentType.BaseType;
+                } while (index == -1 && documentType != null);
+
+                return index;
+            }
+        }
+
+        private class StorageOperationByTypeComparer: IComparer<IStorageOperation>
+        {
+            private readonly Type[] _topologicallyOrderedTypes;
+
+            public StorageOperationByTypeComparer(Type[] topologicallyOrderedTypes)
+            {
+                _topologicallyOrderedTypes = topologicallyOrderedTypes;
+            }
+
+            public int Compare(IStorageOperation x, IStorageOperation y)
+            {
+                if (ReferenceEquals(x, y))
+                {
+                    return 0;
+                }
+
+                if (x?.DocumentType == null || y?.DocumentType == null)
+                {
+                    return 0;
+                }
+
+                if (x.DocumentType == y.DocumentType)
+                {
+                    return 0;
+                }
+
+                var xIndex = FindIndex(x);
+                var yIndex = FindIndex(y);
+
+                return xIndex.CompareTo(yIndex);
+            }
+
+            private int FindIndex(IStorageOperation x)
+            {
+                // Will loop through up the inheritance chain until reaches the end or the index is found, used
+                // to handle inheritance as topologically sorted array may not have the subclasses listed
+                var documentType = x.DocumentType;
+                var index = 0;
+
+                do
+                {
+                    index = _topologicallyOrderedTypes.IndexOf(documentType);
+                    documentType = documentType.BaseType;
+                } while (index == -1 && documentType != null);
+
+                return index;
+            }
         }
     }
 
-    public abstract class DocumentStorageOperation : IStorageOperation
+    public abstract class DocumentStorageOperation: IStorageOperation
     {
         public UpdateStyle UpdateStyle { get; }
 
@@ -370,7 +496,6 @@ namespace Marten.Services
 
         public string TenantOverride { get; set; }
 
-
         public bool Persist(UpdateBatch batch, ITenant tenant)
         {
             var upsert = tenant.StorageFor(Document.GetType());
@@ -380,7 +505,7 @@ namespace Marten.Services
         }
     }
 
-    public class UpsertDocument : DocumentStorageOperation
+    public class UpsertDocument: DocumentStorageOperation
     {
         public UpsertDocument(object document) : base(UpdateStyle.Upsert, document)
         {
@@ -391,20 +516,33 @@ namespace Marten.Services
             TenantOverride = tenantId;
         }
 
-        
+        public override string ToString()
+        {
+            return $"{GetType().Name}: {DocumentType.Name}";
+        }
     }
 
-    public class UpdateDocument : DocumentStorageOperation
+    public class UpdateDocument: DocumentStorageOperation
     {
         public UpdateDocument(object document) : base(UpdateStyle.Update, document)
         {
         }
+
+        public override string ToString()
+        {
+            return $"{GetType().Name}: {DocumentType.Name}";
+        }
     }
 
-    public class InsertDocument : DocumentStorageOperation
+    public class InsertDocument: DocumentStorageOperation
     {
         public InsertDocument(object document) : base(UpdateStyle.Insert, document)
         {
+        }
+
+        public override string ToString()
+        {
+            return $"{GetType().Name}: {DocumentType.Name}";
         }
     }
 }

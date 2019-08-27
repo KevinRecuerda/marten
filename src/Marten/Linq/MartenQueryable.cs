@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
@@ -17,7 +17,7 @@ using Remotion.Linq;
 
 namespace Marten.Linq
 {
-    public class MartenQueryable<T> : QueryableBase<T>, IMartenQueryable<T>
+    public class MartenQueryable<T>: QueryableBase<T>, IMartenQueryable<T>
     {
         public MartenQueryable(IQueryProvider provider) : base(provider)
         {
@@ -100,6 +100,9 @@ namespace Marten.Linq
 
             return Include<TInclude>(idSource, x =>
             {
+                if (x == null)
+                    return;
+
                 var id = storage.Identity(x).As<TKey>();
                 if (!dictionary.ContainsKey(id))
                 {

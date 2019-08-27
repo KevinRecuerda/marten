@@ -1,12 +1,13 @@
-﻿using System;
+using System;
 using System.Linq;
 using Marten.Events;
 using Marten.Storage;
+using Shouldly;
 using Xunit;
 
 namespace Marten.Testing.Events
 {
-    public class delete_single_event_stream : IntegratedFixture
+    public class delete_single_event_stream: IntegratedFixture
     {
         [Theory]
         [InlineData(TenancyStyle.Single)]

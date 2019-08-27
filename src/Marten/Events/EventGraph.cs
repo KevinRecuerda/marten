@@ -17,7 +17,7 @@ namespace Marten.Events
         AsString
     }
 
-    public class EventGraph : IFeatureSchema
+    public class EventGraph: IFeatureSchema
     {
         private readonly Ref<ImHashMap<string, IAggregator>> _aggregateByName =
             Ref.Of(ImHashMap<string, IAggregator>.Empty);
@@ -52,6 +52,15 @@ namespace Marten.Events
         public StreamIdentity StreamIdentity { get; set; } = StreamIdentity.AsGuid;
 
         public TenancyStyle TenancyStyle { get; set; } = TenancyStyle.Single;
+
+        /// <summary>
+        ///     Whether a "for update" (row exclusive lock) should be used when selecting out the event version to use from the streams table
+        /// </summary>
+        /// <remkarks>
+        ///     Not using this can result in race conditions in a concurrent environment that lead to
+        ///       event version mismatches between the event and stream version numbers
+        /// </remkarks>
+        public bool UseAppendEventForUpdateLock { get; set; } = false;
 
         internal StoreOptions Options { get; }
 
@@ -102,7 +111,7 @@ namespace Marten.Events
 
         public void AddAggregator<T>(IAggregator<T> aggregator) where T : class, new()
         {
-            Options.Storage.MappingFor(typeof(T));            
+            Options.Storage.MappingFor(typeof(T));
             _aggregates.Swap(a => a.AddOrUpdate(typeof(T), aggregator));
         }
 
@@ -129,7 +138,7 @@ namespace Marten.Events
             {
                 return null;
             }
-            
+
             _aggregateByName.Swap(a => a.AddOrUpdate(aggregateTypeName, aggregate));
 
             return aggregate.AggregateType;
@@ -242,7 +251,7 @@ namespace Marten.Events
             if (!_nameToType.Value.TryFind(assemblyQualifiedName, out var value))
             {
                 value = Type.GetType(assemblyQualifiedName);
-                if(value == null)
+                if (value == null)
                 {
                     throw new UnknownEventTypeException($"Unable to load event type '{assemblyQualifiedName}'.");
                 }

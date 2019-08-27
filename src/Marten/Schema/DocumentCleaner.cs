@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using Baseline;
 using Marten.Services;
@@ -7,7 +7,7 @@ using Marten.Util;
 
 namespace Marten.Schema
 {
-    public class DocumentCleaner : IDocumentCleaner
+    public class DocumentCleaner: IDocumentCleaner
     {
         public static string DropAllFunctionSql = @"
 SELECT format('DROP FUNCTION %s.%s(%s);'
@@ -27,6 +27,12 @@ FROM   pg_proc p
 LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
 WHERE  p.proname = '{0}'
 AND    n.nspname = '{1}';";
+
+        public static readonly string DropAllSequencesSql = @"SELECT format('DROP SEQUENCE %s.%s;'
+             ,s.sequence_schema
+             ,s.sequence_name)
+FROM   information_schema.sequences s
+WHERE  s.sequence_name like 'mt_%' and s.sequence_schema = ANY(?);";
 
         private readonly StoreOptions _options;
         private readonly ITenant _tenant;
@@ -89,7 +95,10 @@ AND    n.nspname = '{1}';";
                 schemaTables
                     .Each(tableName => { connection.Execute($"DROP TABLE IF EXISTS {tableName} CASCADE;"); });
 
-                var drops = connection.GetStringList(DropAllFunctionSql, new object[] { _options.Storage.AllSchemaNames() });
+                var allSchemas = new object[] { _options.Storage.AllSchemaNames() };
+
+                var drops = connection.GetStringList(DropAllFunctionSql, allSchemas)
+                    .Concat(connection.GetStringList(DropAllSequencesSql, allSchemas));
                 drops.Each(drop => connection.Execute(drop));
                 connection.Commit();
 
