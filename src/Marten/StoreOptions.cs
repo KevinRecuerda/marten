@@ -216,12 +216,25 @@ namespace Marten
         ///     Use the default serialization (ilmerged Newtonsoft.Json) with Enum values
         ///     stored as either integers or strings
         /// </summary>
-        /// <param name="enumStyle"></param>
+        /// <param name="enumStorage"></param>
         /// <param name="casing">Casing style to be used in serialization</param>
         /// <param name="collectionStorage">Allow to set collection storage as raw arrays (without explicit types)</param>
-        public void UseDefaultSerialization(EnumStorage enumStyle = EnumStorage.AsInteger, Casing casing = Casing.Default, CollectionStorage collectionStorage = CollectionStorage.Default)
+        /// <param name="nonPublicMembersStorage">Allow non public members to be used during deserialization</param>
+        public void UseDefaultSerialization(
+            EnumStorage enumStorage = EnumStorage.AsInteger,
+            Casing casing = Casing.Default,
+            CollectionStorage collectionStorage = CollectionStorage.Default,
+            NonPublicMembersStorage nonPublicMembersStorage = NonPublicMembersStorage.Default
+        )
         {
-            Serializer(new JsonNetSerializer { EnumStorage = enumStyle, Casing = casing, CollectionStorage = collectionStorage });
+            Serializer(
+                new JsonNetSerializer
+                {
+                    EnumStorage = enumStorage,
+                    Casing = casing,
+                    CollectionStorage = collectionStorage,
+                    NonPublicMembersStorage = nonPublicMembersStorage
+                });
         }
 
         /// <summary>

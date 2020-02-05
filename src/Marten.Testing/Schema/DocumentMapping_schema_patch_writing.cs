@@ -1,5 +1,7 @@
+using System;
 using Marten.Schema;
 using Marten.Testing.Documents;
+using Shouldly;
 using Xunit;
 
 namespace Marten.Testing.Schema
@@ -163,5 +165,78 @@ namespace Marten.Testing.Schema
                 store.Schema.ApplyAllConfiguredChangesToDatabase();
             }
         }
+
+        [Fact]
+        public void for_document_with_int_id_when_schema_patch_applied_then_does_not_show_more_changes()
+        {
+            theStore.Tenancy.Default.EnsureStorageExists(typeof(IntDoc));
+
+            using (var store = DocumentStore.For(_ =>
+            {
+                _.Connection(ConnectionSource.ConnectionString);
+                _.Schema.For<IntDoc>();
+            }))
+            {
+                Should.NotThrow(() =>
+                {
+                    store.Schema.ApplyAllConfiguredChangesToDatabase();
+
+                    store.Schema.AssertDatabaseMatchesConfiguration();
+                });
+            }
+        }
+
+        [Fact]
+        public void can_create_duplicate_field_with_null_constraint()
+        {
+            theStore.Tenancy.Default.EnsureStorageExists(typeof(Target));
+            using (var store = DocumentStore.For(_ =>
+            {
+                _.Connection(ConnectionSource.ConnectionString);
+                _.Schema.For<Target>().Duplicate(x => x.NullableDateTime);
+            }))
+            {
+                var patch = store.Schema.ToPatch();
+                patch.UpdateDDL.ShouldContain("alter table public.mt_doc_target add column nullable_date_time timestamp without time zone NULL");
+            }
+        }
+
+        [Fact]
+        public void can_create_duplicate_field_with_not_null_constraint()
+        {
+            theStore.Tenancy.Default.EnsureStorageExists(typeof(Target));
+
+            using (var store = DocumentStore.For(_ =>
+            {
+                _.Connection(ConnectionSource.ConnectionString);
+                _.Schema.For<Target>().Duplicate(x => x.Date, notNull: true);
+            }))
+            {
+                var patch = store.Schema.ToPatch();
+                patch.UpdateDDL.ShouldContain("alter table public.mt_doc_target add column date timestamp without time zone NOT NULL");
+            }
+        }
+
+        [Fact]
+        public void can_create_duplicate_field_with_not_null_constraint_using_duplicate_field_attribute()
+        {
+            using (var store = DocumentStore.For(_ =>
+            {
+                _.Connection(ConnectionSource.ConnectionString);
+                _.Schema.For<NonNullableDuplicateFieldTest>();
+            }))
+            {
+                var patch = store.Schema.ToPatch();
+                patch.UpdateDDL.ShouldContain("non_nullable_duplicate_field    timestamp without time zone NOT NULL");
+            }
+        }
+
+    }
+
+    public class NonNullableDuplicateFieldTest
+    {
+        public Guid Id { get; set; }
+        [DuplicateField(NotNull = true)]
+        public DateTime NonNullableDuplicateField { get; set; }
     }
 }

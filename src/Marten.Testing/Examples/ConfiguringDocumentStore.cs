@@ -13,6 +13,7 @@ namespace Marten.Testing.Examples
         public string LastName { get; set; }
         public bool Internal { get; set; }
         public string UserName { get; set; }
+        public string Department { get; set; }
     }
 
     // ENDSAMPLE
@@ -55,7 +56,7 @@ namespace Marten.Testing.Examples
             }
 
             // Open a session for querying, loading, and
-            // updating documents that performas automated
+            // updating documents that performs automated
             // "dirty" checking of previously loaded documents
             using (var session = store.DirtyTrackedSession())
             {
@@ -103,6 +104,81 @@ namespace Marten.Testing.Examples
                 // Replace the default JsonNetSerializer with the one we configured
                 // above
                 _.Serializer(serializer);
+            });
+            // ENDSAMPLE
+        }
+
+        public void customize_json_net_enum_storage_serialization()
+        {
+            // SAMPLE: customize_json_net_enum_storage_serialization
+
+            var store = DocumentStore.For(_ =>
+            {
+                _.Connection("some connection string");
+
+                // Replace the default JsonNetSerializer default enum storage
+                // with storing them as string
+                _.UseDefaultSerialization(enumStorage: EnumStorage.AsString);
+            });
+            // ENDSAMPLE
+        }
+
+        public void customize_json_net_camelcase_casing_serialization()
+        {
+            // SAMPLE: customize_json_net_camelcase_casing_serialization
+
+            var store = DocumentStore.For(_ =>
+            {
+                _.Connection("some connection string");
+
+                // Replace the default (as is) JsonNetSerializer field names casing
+                // with camelCase formatting
+                _.UseDefaultSerialization(casing: Casing.CamelCase);
+            });
+            // ENDSAMPLE
+        }
+
+        public void customize_json_net_snakecase_casing_serialization()
+        {
+            // SAMPLE: customize_json_net_snakecase_casing_serialization
+
+            var store = DocumentStore.For(_ =>
+            {
+                _.Connection("some connection string");
+
+                // Replace the default (as is) JsonNetSerializer field names casing
+                // with snake_case formatting
+                _.UseDefaultSerialization(casing: Casing.SnakeCase);
+            });
+            // ENDSAMPLE
+        }
+
+        public void customize_json_net_snakecase_collectionstorage()
+        {
+            // SAMPLE: customize_json_net_snakecase_collectionstorage
+
+            var store = DocumentStore.For(_ =>
+            {
+                _.Connection("some connection string");
+
+                // Replace the default (strongly typed) JsonNetSerializer collection storage
+                // with JSON array formatting
+                _.UseDefaultSerialization(collectionStorage: CollectionStorage.AsArray);
+            });
+            // ENDSAMPLE
+        }
+
+        public void customize_json_net_snakecase_nonpublicmembersstorage_nonpublicsetters()
+        {
+            // SAMPLE: customize_json_net_snakecase_nonpublicmembersstorage_nonpublicsetters
+
+            var store = DocumentStore.For(_ =>
+            {
+                _.Connection("some connection string");
+
+                // Replace the default (only public setters) JsonNetSerializer deserialization settings
+                // with allowing to also deserialize using non-public setters
+                _.UseDefaultSerialization(nonPublicMembersStorage: NonPublicMembersStorage.NonPublicSetters);
             });
             // ENDSAMPLE
         }
